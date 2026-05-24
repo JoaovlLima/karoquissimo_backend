@@ -1,0 +1,190 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           Int             @id @default(autoincrement()) @map("id")
+  name         String          @db.VarChar(100) @map("nome")
+  email        String          @unique @db.VarChar(150) @map("email")
+  passwordHash String          @db.VarChar(255) @map("senha_hash")
+  isActive     Boolean         @default(true) @map("ativo")
+  createdAt    DateTime        @default(now()) @db.Timestamp(3) @map("criado_em")
+
+  // Relations
+  stockMovements StockMovement[]
+  sales          Sale[]
+
+  @@map("usuarios")
+}
+
+model Company {
+  id            Int     @id @default(autoincrement()) @map("id")
+  corporateName String  @db.VarChar(150) @map("razao_social")
+  tradeName     String  @db.VarChar(150) @map("nome_fantasia")
+  cnpj          String  @unique @db.VarChar(18) @map("cnpj")
+  phone         String  @db.VarChar(20) @map("telefone")
+  whatsapp      String? @db.VarChar(20) @map("whatsapp")
+  email         String? @db.VarChar(150) @map("email")
+  street        String  @db.VarChar(200) @map("logradouro")
+  number        String  @db.VarChar(10) @map("numero")
+  complement    String? @db.VarChar(100) @map("complemento")
+  neighborhood  String  @db.VarChar(100) @map("bairro")
+  city          String  @db.VarChar(100) @map("cidade")
+  state         String  @db.Char(2) @map("uf")
+  zipCode       String  @db.VarChar(10) @map("cep")
+
+  @@map("empresa")
+}
+
+model Client {
+  id           Int      @id @default(autoincrement()) @map("id")
+  fullName     String   @db.VarChar(150) @map("nome_completo")
+  cpf          String   @unique @db.VarChar(14) @map("cpf")
+  birthDate    DateTime @db.Date @map("data_nascimento")
+  phone        String   @db.VarChar(20) @map("telefone")
+  whatsapp     String?  @db.VarChar(20) @map("whatsapp")
+  email        String?  @db.VarChar(150) @map("email")
+  street       String   @db.VarChar(200) @map("logradouro")
+  number       String   @db.VarChar(10) @map("numero")
+  complement   String?  @db.VarChar(100) @map("complemento")
+  neighborhood String   @db.VarChar(100) @map("bairro")
+  city         String   @db.VarChar(100) @map("cidade")
+  state        String   @db.Char(2) @map("uf")
+  zipCode      String   @db.VarChar(10) @map("cep")
+  isActive     Boolean  @default(true) @map("ativo")
+  createdAt    DateTime @default(now()) @db.Timestamp(3) @map("criado_em")
+
+  // Relations
+  sales Sale[]
+
+  @@map("clientes")
+}
+
+model Category {
+  id   Int    @id @default(autoincrement()) @map("id")
+  name String @unique @db.VarChar(80) @map("nome")
+
+  // Relations
+  products Product[]
+
+  @@map("categorias")
+}
+
+model Product {
+  id             Int       @id @default(autoincrement()) @map("id")
+  code           String    @unique @db.VarChar(50) @map("codigo")
+  name           String    @db.VarChar(150) @map("nome")
+  categoryId     Int       @map("categoria_id")
+  color          String    @db.VarChar(50) @map("cor")
+  size           String    @db.VarChar(20) @map("tamanho")
+  price          Decimal   @db.Decimal(10, 2) @map("valor")
+  units          Int       @default(0) @map("unidades")
+  supplier       String    @db.VarChar(150) @map("fornecedor")
+  expirationDate DateTime? @db.Date @map("validade")
+  createdAt      DateTime  @default(now()) @db.Timestamp(3) @map("criado_em")
+  updatedAt      DateTime  @updatedAt @db.Timestamp(3) @map("atualizado_em")
+
+  // Relations
+  category       Category        @relation(fields: [categoryId], references: [id])
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+
+  @@map("produtos")
+}
+
+model StockMovement {
+  id        Int               @id @default(autoincrement()) @map("id")
+  productId Int               @map("produto_id")
+  type      StockMovementType @map("tipo")
+  quantity  Int               @map("quantidade")
+  reason    String            @db.VarChar(200) @map("motivo")
+  userId    Int               @map("usuario_id")
+  createdAt DateTime          @default(now()) @db.Timestamp(3) @map("criado_em")
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("movimentacoes_estoque")
+}
+
+enum StockMovementType {
+  IN         @map("entrada")
+  OUT        @map("saida")
+  ADJUSTMENT @map("ajuste")
+
+  @@map("tipo_movimentacao")
+}
+
+model Sale {
+  id             Int        @id @default(autoincrement()) @map("id")
+  documentNumber String     @unique @db.VarChar(20) @map("numero_doc")
+  clientId       Int        @map("cliente_id")
+  userId         Int        @map("usuario_id")
+  totalValue     Decimal    @db.Decimal(10, 2) @map("valor_total")
+  entryValue     Decimal    @default(0) @db.Decimal(10, 2) @map("valor_entrada")
+  remainingValue Decimal    @db.Decimal(10, 2) @map("valor_restante")
+  status         SaleStatus @default(PENDING) @map("status")
+  observation    String?    @db.Text @map("observacao")
+  createdAt      DateTime   @default(now()) @db.Timestamp(3) @map("criado_em")
+
+  // Relations
+  client       Client        @relation(fields: [clientId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  saleItems    SaleItem[]
+  installments Installment[]
+
+  @@map("vendas")
+}
+
+enum SaleStatus {
+  PAID      @map("quitada")
+  PENDING   @map("pendente")
+  CANCELLED @map("cancelada")
+
+  @@map("status_venda")
+}
+
+model SaleItem {
+  id         Int     @id @default(autoincrement()) @map("id")
+  saleId     Int     @map("venda_id")
+  productId  Int     @map("produto_id")
+  quantity   Int     @map("quantidade")
+  unitPrice  Decimal @db.Decimal(10, 2) @map("valor_unitario")
+  totalPrice Decimal @db.Decimal(10, 2) @map("valor_total")
+
+  // Relations
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("itens_venda")
+}
+
+model Installment {
+  id      Int               @id @default(autoincrement()) @map("id")
+  saleId  Int               @map("venda_id")
+  number  Int               @map("numero")
+  value   Decimal           @db.Decimal(10, 2) @map("valor")
+  dueDate DateTime          @db.Date @map("vencimento")
+  paidAt  DateTime?         @db.Date @map("pago_em")
+  status  InstallmentStatus @default(PENDING) @map("status")
+
+  // Relations
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@map("parcelas")
+}
+
+enum InstallmentStatus {
+  PENDING @map("pendente")
+  PAID    @map("pago")
+  OVERDUE @map("atrasado")
+
+  @@map("status_parcela")
+}
