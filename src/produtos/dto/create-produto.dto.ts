@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsNumber, IsOptional, IsDateString, Min, Length } from 'class-validator';
+import { IsString, IsInt, IsNumber, IsOptional, IsDateString, IsUrl, Min, Length } from 'class-validator';
 
 export class CreateProdutoDto {
   @ApiProperty({ example: 'CAL-001' })
@@ -7,7 +7,7 @@ export class CreateProdutoDto {
   @Length(1, 50)
   code: string;
 
-  @ApiProperty({ example: 'Tênis Esportivo' })
+  @ApiProperty({ example: 'Tenis Esportivo' })
   @IsString()
   @Length(2, 150)
   name: string;
@@ -43,4 +43,9 @@ export class CreateProdutoDto {
   @IsOptional()
   @IsDateString()
   expirationDate?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsUrl()
+  photoUrl?: string;
 }

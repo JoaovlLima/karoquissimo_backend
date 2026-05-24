@@ -87,6 +87,7 @@ model Product {
   units          Int       @default(0) @map("unidades")
   supplier       String    @db.VarChar(150) @map("fornecedor")
   expirationDate DateTime? @db.Date @map("validade")
+  photoUrl       String?   @db.VarChar(500) @map("foto_url")
   createdAt      DateTime  @default(now()) @db.Timestamp(3) @map("criado_em")
   updatedAt      DateTime  @updatedAt @db.Timestamp(3) @map("atualizado_em")
 
