@@ -7,17 +7,19 @@ import { CreateVendaDto } from './dto/create-venda.dto';
 export class VendasService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateVendaDto, userId: number) {
+  create(companyId: number, dto: CreateVendaDto, userId: number) {
     return this.prisma.$transaction(async (tx) => {
       const client = await tx.client.findUnique({ where: { id: dto.clienteId } });
-      if (!client || !client.isActive) {
+      if (!client || !client.isActive || client.companyId !== companyId) {
         throw new NotFoundException('Cliente não encontrado ou inativo');
       }
 
       const products = await Promise.all(
         dto.itens.map(async (item) => {
           const product = await tx.product.findUnique({ where: { id: item.produtoId } });
-          if (!product) throw new NotFoundException('Produto não encontrado');
+          if (!product || product.companyId !== companyId) {
+            throw new NotFoundException('Produto não encontrado');
+          }
           if (product.units < item.quantidade) {
             throw new BadRequestException(`Estoque insuficiente para o produto ${product.name}`);
           }
@@ -38,6 +40,7 @@ export class VendasService {
           documentNumber,
           clientId: dto.clienteId,
           userId,
+          companyId,
           totalValue: valorTotal,
           entryValue: dto.valorEntrada,
           remainingValue: Math.max(valorRestante, 0),
@@ -129,9 +132,10 @@ export class VendasService {
     });
   }
 
-  findAll(clienteId?: number, status?: SaleStatus, page = 1, limit = 20) {
+  findAll(companyId: number, clienteId?: number, status?: SaleStatus, page = 1, limit = 20) {
     return this.prisma.sale.findMany({
       where: {
+        companyId,
         ...(clienteId ? { clientId: clienteId } : {}),
         ...(status ? { status } : {}),
       },
@@ -145,7 +149,7 @@ export class VendasService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, companyId?: number) {
     const sale = await this.prisma.sale.findUnique({
       where: { id },
       include: {
@@ -155,7 +159,9 @@ export class VendasService {
         installments: true,
       },
     });
-    if (!sale) throw new NotFoundException('Venda não encontrada');
+    if (!sale || (companyId !== undefined && sale.companyId !== companyId)) {
+      throw new NotFoundException('Venda não encontrada');
+    }
     return sale;
   }
 }

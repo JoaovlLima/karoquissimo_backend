@@ -7,9 +7,10 @@ import { UpdateClienteDto } from './dto/update-cliente.dto';
 export class ClientesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(q?: string) {
+  findAll(companyId: number, q?: string) {
     return this.prisma.client.findMany({
       where: {
+        companyId,
         isActive: true,
         ...(q ? { fullName: { contains: q } } : {}),
       },
@@ -17,13 +18,15 @@ export class ClientesService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, companyId?: number) {
     const client = await this.prisma.client.findUnique({ where: { id } });
-    if (!client) throw new NotFoundException('Cliente não encontrado');
+    if (!client || (companyId !== undefined && client.companyId !== companyId)) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
     return client;
   }
 
-  async create(dto: CreateClienteDto) {
+  async create(companyId: number, dto: CreateClienteDto) {
     const exists = await this.prisma.client.findUnique({ where: { cpf: dto.cpf } });
     if (exists) throw new ConflictException('CPF já cadastrado');
     return this.prisma.client.create({
@@ -41,17 +44,18 @@ export class ClientesService {
         city: dto.city,
         state: dto.state,
         zipCode: dto.zipCode,
+        companyId,
       },
     });
   }
 
-  async update(id: number, dto: UpdateClienteDto) {
-    await this.findOne(id);
+  async update(id: number, dto: UpdateClienteDto, companyId?: number) {
+    await this.findOne(id, companyId);
     return this.prisma.client.update({ where: { id }, data: dto });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, companyId?: number) {
+    await this.findOne(id, companyId);
     return this.prisma.client.update({ where: { id }, data: { isActive: false } });
   }
 }

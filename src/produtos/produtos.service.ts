@@ -32,9 +32,10 @@ export class ProdutosService {
     };
   }
 
-  findAll(q?: string, categoryId?: number) {
+  findAll(companyId: number, q?: string, categoryId?: number) {
     return this.prisma.product.findMany({
       where: {
+        companyId,
         ...(q ? { name: { contains: q } } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
@@ -43,17 +44,42 @@ export class ProdutosService {
     });
   }
 
-  async findOne(id: number) {
+  catalogoPublico(companyId: number, q?: string, categoryId?: number) {
+    return this.prisma.product.findMany({
+      where: {
+        companyId,
+        units: { gt: 0 },
+        ...(q ? { name: { contains: q } } : {}),
+        ...(categoryId ? { categoryId } : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        color: true,
+        size: true,
+        price: true,
+        units: true,
+        photoUrl: true,
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async findOne(id: number, companyId?: number) {
     const p = await this.prisma.product.findUnique({
       where: { id },
       include: { category: { select: { id: true, name: true } } },
     });
-    if (!p) throw new NotFoundException('Produto não encontrado');
+    if (!p || (companyId !== undefined && p.companyId !== companyId)) {
+      throw new NotFoundException('Produto não encontrado');
+    }
     return p;
   }
 
-  async create(dto: CreateProdutoDto) {
-    const exists = await this.prisma.product.findUnique({ where: { code: dto.code } });
+  async create(companyId: number, dto: CreateProdutoDto) {
+    const exists = await this.prisma.product.findFirst({ where: { code: dto.code, companyId } });
     if (exists) throw new ConflictException('Codigo de produto ja cadastrado');
     const cat = await this.prisma.category.findUnique({ where: { id: dto.categoryId } });
     if (!cat) throw new NotFoundException('Categoria nao encontrada');
@@ -69,13 +95,14 @@ export class ProdutosService {
         supplier: dto.supplier,
         expirationDate: dto.expirationDate ? new Date(dto.expirationDate) : null,
         photoUrl: dto.photoUrl ?? null,
+        companyId,
       },
       include: { category: { select: { id: true, name: true } } },
     });
   }
 
-  async update(id: number, dto: UpdateProdutoDto) {
-    await this.findOne(id);
+  async update(id: number, dto: UpdateProdutoDto, companyId?: number) {
+    await this.findOne(id, companyId);
     return this.prisma.product.update({
       where: { id },
       data: {
@@ -86,8 +113,8 @@ export class ProdutosService {
     });
   }
 
-  async uploadFoto(id: number, file: Express.Multer.File) {
-    const product = await this.findOne(id);
+  async uploadFoto(id: number, file: Express.Multer.File, companyId?: number) {
+    const product = await this.findOne(id, companyId);
 
     const ext = (file.originalname.split('.').pop()) ?? 'jpg';
     const fileName = product.code + '-' + Date.now() + '.' + ext;
@@ -131,8 +158,8 @@ export class ProdutosService {
     });
   }
 
-  async ajustarEstoque(id: number, dto: AjustarEstoqueDto, userId: number) {
-    const product = await this.findOne(id);
+  async ajustarEstoque(id: number, dto: AjustarEstoqueDto, userId: number, companyId?: number) {
+    const product = await this.findOne(id, companyId);
     const novasUnidades = Number(product.units) + dto.quantity;
     if (novasUnidades < 0) throw new BadRequestException('Estoque nao pode ficar negativo');
     return this.prisma.$transaction([

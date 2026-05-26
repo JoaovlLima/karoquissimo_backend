@@ -23,7 +23,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Retorna dados do usuário autenticado' })
   @ApiResponse({ status: 200, description: 'Dados do usuário' })
   @ApiResponse({ status: 401, description: 'Token inválido ou ausente' })
-  getMe(@Request() req: { user: { id: number; email: string; name: string } }) {
-    return this.authService.getMe(req.user);
+  getMe(
+  @Request()
+  req: {
+    user: {
+      id: number;
+      email: string;
+      name: string;
+      companyId: number;
+    };
+  },
+) {
+  return this.authService.getMe(req.user);
   }
 }

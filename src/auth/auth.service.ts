@@ -16,6 +16,7 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
+      include: { company: { select: { tradeName: true } } },
     });
 
     if (!user || !user.isActive) {
@@ -24,10 +25,11 @@ export class AuthService {
 
     const passwordMatch = await bcrypt.compare(loginDto.password, user.passwordHash);
     if (!passwordMatch) {
+      
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const payload = { sub: user.id, email: user.email, name: user.name };
+    const payload = { sub: user.id, email: user.email, name: user.name, companyId: user.companyId };
     const token = this.jwtService.sign(payload);
 
     return {
@@ -36,11 +38,13 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        companyId: user.companyId,
+        companyName: user.company.tradeName,
       },
     };
   }
 
-  getMe(user: { id: number; email: string; name: string }) {
+  getMe(user: { id: number; email: string; name: string; companyId: number; companyName?: string }) {
     return user;
   }
 }

@@ -4,6 +4,13 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { VendasService } from './vendas.service';
 import { CreateVendaDto } from './dto/create-venda.dto';
 
+interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  companyId: number;
+}
+
 @ApiTags('Vendas')
 @ApiBearerAuth()
 @Controller('vendas')
@@ -17,23 +24,30 @@ export class VendasController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
+    @Req() req: { user: AuthUser },
     @Query('clienteId', new ParseIntPipe({ optional: true })) clienteId?: number,
     @Query('status', new ParseEnumPipe(SaleStatus, { optional: true })) status?: SaleStatus,
     @Query('page', new ParseIntPipe({ optional: true })) page = 1,
     @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
   ) {
-    return this.service.findAll(clienteId, status, page, limit);
+    return this.service.findAll(req.user.companyId, clienteId, status, page, limit);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Buscar venda por ID' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: AuthUser },
+  ) {
+    return this.service.findOne(id, req.user.companyId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Registrar nova venda' })
-  create(@Body() dto: CreateVendaDto, @Req() req: { user: { id: number } }) {
-    return this.service.create(dto, req.user.id);
+  create(
+    @Body() dto: CreateVendaDto,
+    @Req() req: { user: AuthUser },
+  ) {
+    return this.service.create(req.user.companyId, dto, req.user.id);
   }
 }
