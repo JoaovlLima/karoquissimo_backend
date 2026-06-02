@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseEnumPipe, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { SaleStatus } from '@prisma/client';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { VendasService } from './vendas.service';
@@ -58,5 +58,15 @@ export class VendasController {
     @Req() req: { user: AuthUser },
   ) {
     return this.service.cancelar(id, req.user.companyId);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Excluir venda permanentemente (restaura estoque se necessario)' })
+  async deletar(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: AuthUser },
+  ): Promise<void> {
+    return this.service.deletar(id, req.user.companyId);
   }
 }

@@ -49,7 +49,6 @@ export class VendasService {
         },
       });
 
-      // Cria itens e movimentacoes de estoque em paralelo
       await Promise.all([
         ...dto.itens.map((item) =>
           tx.saleItem.create({
@@ -106,7 +105,6 @@ export class VendasService {
         await tx.installment.createMany({ data: parcelasData });
       }
 
-      // Retorna a venda com todas as relacoes sem fazer um findUnique extra
       return {
         ...sale,
         client: { id: client.id, fullName: client.fullName },
@@ -195,6 +193,35 @@ export class VendasService {
           installments: true,
         },
       });
+    }, { timeout: 15000, maxWait: 5000 });
+  }
+
+  async deletar(id: number, companyId: number): Promise<void> {
+    return this.prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        include: { saleItems: true },
+      });
+      if (!sale || sale.companyId !== companyId) {
+        throw new NotFoundException('Venda nao encontrada');
+      }
+
+      // Restaura estoque se a venda nao estava cancelada (cancelada ja reverteu)
+      if (sale.status !== SaleStatus.CANCELLED) {
+        await Promise.all(
+          sale.saleItems.map((item) =>
+            tx.product.update({
+              where: { id: item.productId },
+              data: { units: { increment: item.quantity } },
+            }),
+          ),
+        );
+      }
+
+      // Exclui tudo em ordem (FK: parcelas e itens antes da venda)
+      await tx.installment.deleteMany({ where: { saleId: id } });
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      await tx.sale.delete({ where: { id } });
     }, { timeout: 15000, maxWait: 5000 });
   }
 }
