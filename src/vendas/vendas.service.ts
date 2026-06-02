@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InstallmentStatus, SaleStatus, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVendaDto } from './dto/create-venda.dto';
@@ -11,14 +11,14 @@ export class VendasService {
     return this.prisma.$transaction(async (tx) => {
       const client = await tx.client.findUnique({ where: { id: dto.clienteId } });
       if (!client || !client.isActive || client.companyId !== companyId) {
-        throw new NotFoundException('Cliente não encontrado ou inativo');
+        throw new NotFoundException('Cliente nao encontrado ou inativo');
       }
 
       const products = await Promise.all(
         dto.itens.map(async (item) => {
           const product = await tx.product.findUnique({ where: { id: item.produtoId } });
           if (!product || product.companyId !== companyId) {
-            throw new NotFoundException('Produto não encontrado');
+            throw new NotFoundException('Produto nao encontrado');
           }
           if (product.units < item.quantidade) {
             throw new BadRequestException(`Estoque insuficiente para o produto ${product.name}`);
@@ -49,8 +49,9 @@ export class VendasService {
         },
       });
 
-      await Promise.all(
-        dto.itens.map((item) =>
+      // Cria itens e movimentacoes de estoque em paralelo
+      await Promise.all([
+        ...dto.itens.map((item) =>
           tx.saleItem.create({
             data: {
               saleId: sale.id,
@@ -61,27 +62,22 @@ export class VendasService {
             },
           }),
         ),
-      );
-
-      await Promise.all(
-        dto.itens.map((item, index) =>
-          Promise.all([
-            tx.product.update({
-              where: { id: item.produtoId },
-              data: { units: products[index].units - item.quantidade },
-            }),
-            tx.stockMovement.create({
-              data: {
-                productId: item.produtoId,
-                type: StockMovementType.OUT,
-                quantity: -Math.abs(item.quantidade),
-                reason: `Venda ${documentNumber}`,
-                userId,
-              },
-            }),
-          ]),
+        ...dto.itens.map((item, index) =>
+          tx.product.update({
+            where: { id: item.produtoId },
+            data: { units: products[index].units - item.quantidade },
+          }),
         ),
-      );
+        tx.stockMovement.createMany({
+          data: dto.itens.map((item) => ({
+            productId: item.produtoId,
+            type: StockMovementType.OUT,
+            quantity: -Math.abs(item.quantidade),
+            reason: `Venda ${documentNumber}`,
+            userId,
+          })),
+        }),
+      ]);
 
       if (valorRestante <= 0) {
         await tx.installment.create({
@@ -97,42 +93,39 @@ export class VendasService {
       } else {
         const baseValue = Math.round((valorRestante / dto.numeroParcelas) * 100) / 100;
         let allocated = 0;
-
-        for (let index = 0; index < dto.numeroParcelas; index += 1) {
+        const parcelasData = Array.from({ length: dto.numeroParcelas }, (_, index) => {
           const isLast = index === dto.numeroParcelas - 1;
           const value = isLast
             ? Math.round((valorRestante - allocated) * 100) / 100
             : baseValue;
           allocated += value;
-
           const dueDate = new Date(dto.dataVencimento1);
           dueDate.setMonth(dueDate.getMonth() + index);
-
-          await tx.installment.create({
-            data: {
-              saleId: sale.id,
-              number: index + 1,
-              value,
-              dueDate,
-              status: InstallmentStatus.PENDING,
-            },
-          });
-        }
+          return { saleId: sale.id, number: index + 1, value, dueDate, status: InstallmentStatus.PENDING };
+        });
+        await tx.installment.createMany({ data: parcelasData });
       }
 
-      return tx.sale.findUnique({
-        where: { id: sale.id },
-        include: {
-          client: { select: { id: true, fullName: true } },
-          user: { select: { id: true, name: true } },
-          saleItems: { include: { product: true } },
-          installments: true,
-        },
-      });
-    });
+      // Retorna a venda com todas as relacoes sem fazer um findUnique extra
+      return {
+        ...sale,
+        client: { id: client.id, fullName: client.fullName },
+        user: { id: userId, name: '' },
+        saleItems: dto.itens.map((item, i) => ({
+          id: 0,
+          saleId: sale.id,
+          productId: item.produtoId,
+          quantity: item.quantidade,
+          unitPrice: item.valorUnitario,
+          totalPrice: item.quantidade * item.valorUnitario,
+          product: products[i],
+        })),
+      };
+    }, { timeout: 30000, maxWait: 10000 });
   }
 
   findAll(companyId: number, clienteId?: number, status?: SaleStatus, page = 1, limit = 20) {
+    if (!companyId) throw new BadRequestException('companyId ausente na requisicao');
     return this.prisma.sale.findMany({
       where: {
         companyId,
@@ -160,8 +153,48 @@ export class VendasService {
       },
     });
     if (!sale || (companyId !== undefined && sale.companyId !== companyId)) {
-      throw new NotFoundException('Venda não encontrada');
+      throw new NotFoundException('Venda nao encontrada');
     }
     return sale;
+  }
+
+  async cancelar(id: number, companyId: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        include: { saleItems: true },
+      });
+      if (!sale || sale.companyId !== companyId) {
+        throw new NotFoundException('Venda nao encontrada');
+      }
+      if (sale.status === SaleStatus.CANCELLED) {
+        throw new ConflictException('Venda ja cancelada');
+      }
+      if (sale.status === SaleStatus.PAID) {
+        throw new ConflictException('Nao e possivel cancelar uma venda quitada');
+      }
+
+      await Promise.all([
+        ...sale.saleItems.map((item) =>
+          tx.product.update({
+            where: { id: item.productId },
+            data: { units: { increment: item.quantity } },
+          }),
+        ),
+        tx.installment.deleteMany({
+          where: { saleId: id, status: InstallmentStatus.PENDING },
+        }),
+      ]);
+
+      return tx.sale.update({
+        where: { id },
+        data: { status: SaleStatus.CANCELLED, remainingValue: 0 },
+        include: {
+          client: { select: { id: true, fullName: true } },
+          saleItems: { include: { product: true } },
+          installments: true,
+        },
+      });
+    }, { timeout: 15000, maxWait: 5000 });
   }
 }

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Patch, Param, Body,
+  Controller, Get, Post, Put, Patch, Delete, HttpCode, Param, Body,
   Query, Req, ParseIntPipe, UseInterceptors, UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
@@ -79,6 +79,16 @@ export class ProdutosController {
     @Req() req: { user: AuthUser },
   ) {
     return this.service.update(id, dto, req.user.companyId);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Excluir produto (somente sem vendas)' })
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: AuthUser },
+  ): Promise<void> {
+    return this.service.remove(id, req.user.companyId);
   }
 
   @Patch(':id/estoque')

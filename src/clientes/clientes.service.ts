@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
@@ -8,6 +8,7 @@ export class ClientesService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(companyId: number, q?: string) {
+    if (!companyId) throw new BadRequestException('companyId ausente na requisição');
     return this.prisma.client.findMany({
       where: {
         companyId,

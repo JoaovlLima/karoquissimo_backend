@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getStats() {
+  async getStats(companyId: number) {
     const hoje = new Date();
     const inicioDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     const fimDia = new Date(inicioDia.getTime() + 24 * 60 * 60 * 1000);
@@ -18,20 +18,24 @@ export class DashboardService {
       parcelasPendentes,
       produtosEstoqueBaixo,
     ] = await Promise.all([
-      this.prisma.client.count({ where: { isActive: true } }),
-      this.prisma.product.count(),
+      this.prisma.client.count({ where: { companyId, isActive: true } }),
+      this.prisma.product.count({ where: { companyId } }),
       this.prisma.sale.findMany({
-        where: { createdAt: { gte: inicioDia, lt: fimDia } },
+        where: { companyId, createdAt: { gte: inicioDia, lt: fimDia } },
         select: { totalValue: true },
       }),
       this.prisma.installment.count({
-        where: { dueDate: { gte: inicioDia, lt: fimDia }, status: 'PENDING' },
+        where: {
+          sale: { companyId },
+          dueDate: { gte: inicioDia, lt: fimDia },
+          status: 'PENDING',
+        },
       }),
       this.prisma.installment.findMany({
-        where: { status: 'PENDING' },
+        where: { sale: { companyId }, status: 'PENDING' },
         select: { value: true },
       }),
-      this.prisma.product.count({ where: { units: { lte: 3 } } }),
+      this.prisma.product.count({ where: { companyId, units: { lte: 3 } } }),
     ]);
 
     const faturamentoHoje = vendasHoje.reduce((acc, v) => acc + Number(v.totalValue), 0);
@@ -49,11 +53,15 @@ export class DashboardService {
     };
   }
 
-  getParcelasProximos7Dias() {
+  getParcelasProximos7Dias(companyId: number) {
     const hoje = new Date();
     const em7dias = new Date(hoje.getTime() + 7 * 24 * 60 * 60 * 1000);
     return this.prisma.installment.findMany({
-      where: { dueDate: { gte: hoje, lte: em7dias }, status: 'PENDING' },
+      where: {
+        sale: { companyId },
+        dueDate: { gte: hoje, lte: em7dias },
+        status: 'PENDING',
+      },
       include: {
         sale: {
           include: { client: { select: { id: true, fullName: true } } },
@@ -64,9 +72,9 @@ export class DashboardService {
     });
   }
 
-  getProdutosEstoqueBaixo() {
+  getProdutosEstoqueBaixo(companyId: number) {
     return this.prisma.product.findMany({
-      where: { units: { lte: 3 } },
+      where: { companyId, units: { lte: 3 } },
       include: { category: { select: { name: true } } },
       orderBy: { units: 'asc' },
       take: 10,

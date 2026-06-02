@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoriaDto } from './dto/create-categoria.dto';
 
@@ -7,6 +7,7 @@ export class CategoriasService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(companyId: number) {
+    if (!companyId) throw new BadRequestException('companyId ausente na requisição');
     return this.prisma.category.findMany({
       where: { companyId },
       orderBy: { name: 'asc' },

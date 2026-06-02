@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+﻿import { Injectable, ConflictException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,6 +33,7 @@ export class ProdutosService {
   }
 
   findAll(companyId: number, q?: string, categoryId?: number) {
+    if (!companyId) throw new BadRequestException('companyId ausente na requisição');
     return this.prisma.product.findMany({
       where: {
         companyId,
@@ -111,6 +112,29 @@ export class ProdutosService {
       },
       include: { category: { select: { id: true, name: true } } },
     });
+  }
+
+  async remove(id: number, companyId: number): Promise<void> {
+    const product = await this.findOne(id, companyId);
+
+    const hasSales = await this.prisma.saleItem.count({ where: { productId: id } });
+    if (hasSales > 0) {
+      throw new ConflictException('Produto possui vendas associadas e não pode ser excluído');
+    }
+
+    if (product.photoUrl) {
+      const fileName = product.photoUrl.split('/').pop();
+      if (fileName) {
+        await axios
+          .delete(this.storageUrl + '/' + BUCKET + '/' + fileName, { headers: this.authHeaders })
+          .catch(() => null);
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.stockMovement.deleteMany({ where: { productId: id } }),
+      this.prisma.product.delete({ where: { id } }),
+    ]);
   }
 
   async uploadFoto(id: number, file: Express.Multer.File, companyId?: number) {
