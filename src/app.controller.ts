@@ -10,3 +10,14 @@ export class AppController {
     return this.appService.getHello();
   }
 }
+
+@Controller('health')
+export class HealthController {
+  @Get()
+  health() {
+    return {
+      status: 'UP',
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
