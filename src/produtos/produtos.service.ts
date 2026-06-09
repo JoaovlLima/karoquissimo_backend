@@ -1,5 +1,6 @@
-﻿import { Injectable, ConflictException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+﻿import { Injectable, ConflictException, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProdutoDto } from './dto/create-produto.dto';
@@ -10,10 +11,24 @@ const BUCKET = 'produtos';
 
 @Injectable()
 export class ProdutosService {
+  private readonly logger = new Logger(ProdutosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
+
+  private async generateUniqueCode(companyId: number): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = randomBytes(4).toString('hex').toUpperCase();
+      const exists = await this.prisma.product.findFirst({ where: { code, companyId } });
+      if (!exists) {
+        this.logger.debug(`Código gerado: ${code} (tentativa ${attempt + 1})`);
+        return code;
+      }
+    }
+    throw new ConflictException('Não foi possível gerar um código único. Tente novamente.');
+  }
 
   private get storageUrl(): string {
     return this.config.get<string>('SUPABASE_URL') + '/storage/v1/object';
@@ -80,26 +95,36 @@ export class ProdutosService {
   }
 
   async create(companyId: number, dto: CreateProdutoDto) {
-    const exists = await this.prisma.product.findFirst({ where: { code: dto.code, companyId } });
-    if (exists) throw new ConflictException('Codigo de produto ja cadastrado');
+    this.logger.log(`[create] companyId=${companyId} payload=${JSON.stringify(dto)}`);
     const cat = await this.prisma.category.findUnique({ where: { id: dto.categoryId } });
-    if (!cat) throw new NotFoundException('Categoria nao encontrada');
-    return this.prisma.product.create({
-      data: {
-        code: dto.code,
-        name: dto.name,
-        categoryId: dto.categoryId,
-        color: dto.color,
-        size: dto.size,
-        price: dto.price,
-        units: dto.units,
-        supplier: dto.supplier,
-        expirationDate: dto.expirationDate ? new Date(dto.expirationDate) : null,
-        photoUrl: dto.photoUrl ?? null,
-        companyId,
-      },
-      include: { category: { select: { id: true, name: true } } },
-    });
+    if (!cat) {
+      this.logger.warn(`[create] Categoria não encontrada: categoryId=${dto.categoryId}`);
+      throw new NotFoundException('Categoria nao encontrada');
+    }
+    const code = await this.generateUniqueCode(companyId);
+    try {
+      const product = await this.prisma.product.create({
+        data: {
+          code,
+          name: dto.name,
+          categoryId: dto.categoryId,
+          color: dto.color,
+          size: dto.size,
+          price: dto.price,
+          units: dto.units,
+          supplier: dto.supplier,
+          expirationDate: dto.expirationDate ? new Date(dto.expirationDate) : null,
+          photoUrl: dto.photoUrl ?? null,
+          companyId,
+        },
+        include: { category: { select: { id: true, name: true } } },
+      });
+      this.logger.log(`[create] Produto criado: id=${product.id} code=${product.code}`);
+      return product;
+    } catch (err: any) {
+      this.logger.error(`[create] Erro ao criar produto: ${err?.message}`, err?.stack);
+      throw err;
+    }
   }
 
   async update(id: number, dto: UpdateProdutoDto, companyId?: number) {

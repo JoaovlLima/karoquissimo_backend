@@ -2,11 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsInt, IsNumber, IsOptional, IsDateString, IsUrl, Min, Length } from 'class-validator';
 
 export class CreateProdutoDto {
-  @ApiProperty({ example: 'CAL-001' })
-  @IsString()
-  @Length(1, 50)
-  code: string;
-
   @ApiProperty({ example: 'Tenis Esportivo' })
   @IsString()
   @Length(2, 150)

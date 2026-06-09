@@ -52,7 +52,13 @@ export class ClientesService {
 
   async update(id: number, dto: UpdateClienteDto, companyId?: number) {
     await this.findOne(id, companyId);
-    return this.prisma.client.update({ where: { id }, data: dto });
+    return this.prisma.client.update({
+      where: { id },
+      data: {
+        ...dto,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+      },
+    });
   }
 
   async remove(id: number, companyId?: number) {

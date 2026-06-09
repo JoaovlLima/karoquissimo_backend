@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Put, Patch, Delete, HttpCode, Param, Body,
   Query, Req, ParseIntPipe, UseInterceptors, UploadedFile,
-  BadRequestException,
+  BadRequestException, Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -26,6 +26,8 @@ interface AuthUser {
 @ApiBearerAuth()
 @Controller('produtos')
 export class ProdutosController {
+  private readonly logger = new Logger(ProdutosController.name);
+
   constructor(private readonly service: ProdutosService) {}
 
   @Get()
@@ -68,6 +70,7 @@ export class ProdutosController {
     @Body() dto: CreateProdutoDto,
     @Req() req: { user: AuthUser },
   ) {
+    this.logger.log(`POST /produtos companyId=${req.user.companyId} body=${JSON.stringify(dto)}`);
     return this.service.create(req.user.companyId, dto);
   }
 
